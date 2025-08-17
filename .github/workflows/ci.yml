@@ -5,13 +5,12 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ "**" ]
-  workflow_dispatch: {} # <- enables manual trigger
+  workflow_dispatch: {}
 
 env:
   GO_VERSION: "1.24.x"
   IMAGE_REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }} # e.g. owner/repo
-  # Final image: ghcr.io/<owner>/<repo>:<tag>
+  IMAGE_NAME: ${{ github.repository }}  # e.g. owner/repo
 
 jobs:
   build-test:
@@ -49,11 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write     # needed for ghcr.io push
-    env:
-      IMAGE_REGISTRY: ghcr.io
-      IMAGE_REF: ghcr.io/${{ env.IMAGE_NAME }}
-      # Tags: sha and branch; 'latest' on main
+      packages: write   # required to push to GHCR with GITHUB_TOKEN
     steps:
       - name: Checkout
         uses: actions/checkout@v4
