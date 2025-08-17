@@ -1,0 +1,17 @@
+services:
+  weather:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: "1.24"   # adjust for a different Go version
+    image: go-weather-service:local
+    environment:
+      # REQUIRED by NWS: identify app + contact email/URL
+      NWS_USER_AGENT: "go-weather-service/1.0 (christian@redbonzai.com)"
+      # Optional thresholds; can be tweaked
+      COLD_LT_F: "50"
+      HOT_GE_F: "80"
+    ports:
+      - "8080:8080"
+    # restart: unless-stopped # uncomment for long-running deployments
