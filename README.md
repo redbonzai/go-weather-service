@@ -184,6 +184,28 @@ go-weather/
 ```bash
 go test ./...
 ```
+### Run integration tests
+
+```bash
+go test -tags=integration ./...
+```
+
+### Set ENV Vars
+
+```bash
+  # one-time per shell
+  cp .env.example .env
+```
+```bash
+  # whenever you run locally:
+  set -a; source .env; set +a
+  go run ./cmd/server
+```
+```bash
+  # or curl:
+  set -a; source .env; set +a
+  curl "http://localhost:8080/weather?lat=38.8894&lon=-77.0352"
+```
 
 ### Common checks
 

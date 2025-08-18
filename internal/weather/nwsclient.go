@@ -9,21 +9,11 @@ import (
 	"time"
 )
 
-const baseAPIURL = "https://api.weather.gov"
-
-// NewWeatherServiceClient creates a ForecastClient backed by api.weather.gov.
-// userAgent must include app id and contact per NWS requirements.
-func NewWeatherServiceClient(httpClient *http.Client, userAgent string) (ForecastClient, error) {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
-	}
-	if userAgent == "" {
-		return nil, errors.New("user agent required for NWS API")
-	}
-	return &weatherServiceClient{httpClient: httpClient, userAgent: userAgent}, nil
-}
+// defaultBaseURL is used in production; tests can override via constructor.
+const defaultBaseURL = "https://api.weather.gov"
 
 type weatherServiceClient struct {
+	baseURL    string
 	httpClient *http.Client
 	userAgent  string
 }
@@ -45,26 +35,47 @@ type forecastResp struct {
 	} `json:"properties"`
 }
 
-func (client *weatherServiceClient) GetForecastPeriods(ctx context.Context, lat, lon float64) ([]ForecastPeriod, error) {
-	// 1) points -> forecast URL
-	pointsURL := fmt.Sprintf("%s/points/%.4f,%.4f", baseAPIURL, lat, lon)
+// NewWeatherServiceClient: production constructor (uses api.weather.gov)
+func NewWeatherServiceClient(httpClient *http.Client, userAgent string) (ForecastClient, error) {
+	return NewWeatherServiceClientWithBaseURL(httpClient, userAgent, defaultBaseURL)
+}
+
+// NewWeatherServiceClientWithBaseURL: test/alt-env constructor
+func NewWeatherServiceClientWithBaseURL(httpClient *http.Client, userAgent, baseURL string) (ForecastClient, error) {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 10 * time.Second}
+	}
+	if userAgent == "" {
+		return nil, errors.New("user agent required for NWS API")
+	}
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	return &weatherServiceClient{
+		baseURL:    baseURL,
+		httpClient: httpClient,
+		userAgent:  userAgent,
+	}, nil
+}
+
+func (c *weatherServiceClient) GetForecastPeriods(ctx context.Context, lat, lon float64) ([]ForecastPeriod, error) {
+	pointsURL := fmt.Sprintf("%s/points/%.4f,%.4f", c.baseURL, lat, lon)
 
 	var pr pointsResp
-	if err := client.getJSON(ctx, pointsURL, &pr); err != nil {
+	if err := c.getJSON(ctx, pointsURL, &pr); err != nil {
 		return nil, fmt.Errorf("points request failed: %w", err)
 	}
 	if pr.Properties.Forecast == "" {
 		return nil, errors.New("no forecast URL returned by points endpoint")
 	}
 
-	// 2) GET forecast URL
-	var fr forecastResp
-	if err := client.getJSON(ctx, pr.Properties.Forecast, &fr); err != nil {
+	var forecastResponse forecastResp
+	if err := c.getJSON(ctx, pr.Properties.Forecast, &forecastResponse); err != nil {
 		return nil, fmt.Errorf("forecast request failed: %w", err)
 	}
 
-	out := make([]ForecastPeriod, 0, len(fr.Properties.Periods))
-	for _, p := range fr.Properties.Periods {
+	out := make([]ForecastPeriod, 0, len(forecastResponse.Properties.Periods))
+	for _, p := range forecastResponse.Properties.Periods {
 		out = append(out, ForecastPeriod{
 			Name:          p.Name,
 			ShortForecast: p.ShortForecast,
@@ -75,20 +86,16 @@ func (client *weatherServiceClient) GetForecastPeriods(ctx context.Context, lat,
 	return out, nil
 }
 
-func (client *weatherServiceClient) getJSON(ctx context.Context, url string, target any) error {
+func (c *weatherServiceClient) getJSON(ctx context.Context, url string, target any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-
-	// ✅ Prefer Geo+JSON (or just omit Accept entirely)
+	// Use GeoJSON (or omit Accept) so /points returns properties.forecast
 	req.Header.Set("Accept", "application/geo+json")
-	req.Header.Set("User-Agent", client.userAgent)
+	req.Header.Set("User-Agent", c.userAgent)
 
-	// (Optional but helpful) Avoid stale caches while debugging:
-	req.Header.Set("Cache-Control", "no-cache")
-
-	resp, err := client.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
